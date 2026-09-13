@@ -147,9 +147,9 @@
             </section>
 
             <section class="room-panel chat-preview">
-                <div class="section-header"><h3>Chat da sala</h3><span>em breve: tempo real</span></div>
-                <div id="messagesContainer"><div class="message malu"><span>Malu</span><p>nosso chat vai aparecer aqui 💜</p></div></div>
-                <div class="chat-compose"><input id="chatInput" type="text" placeholder="Enviar mensagem..." disabled><button type="button" disabled>➤</button></div>
+                <div class="section-header"><h3>Chat da sala</h3><span id="chatStatus">tempo real 💜</span></div>
+                <div id="messagesContainer" class="messages-container"><div class="chat-empty">Carregando mensagens...</div></div>
+                <form class="chat-compose" id="chatForm"><input id="chatInput" type="text" maxlength="500" autocomplete="off" placeholder="Enviar mensagem..." required><button id="chatSendButton" type="submit" aria-label="Enviar mensagem">➤</button></form>
             </section>
         </section>
     </main>
