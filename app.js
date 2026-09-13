@@ -34,6 +34,9 @@ let currentParticipant = null;
 let presenceChannel = null;
 let chatChannel = null;
 let chatStarted = false;
+let playerChannel = null;
+let playerStarted = false;
+let currentPlayerState = null;
 
 const chatForm = document.getElementById("chatForm");
 const chatInput = document.getElementById("chatInput");
@@ -43,6 +46,12 @@ const chatStatus = document.getElementById("chatStatus");
 
 const ROOM_ID = 1;
 const PRESENCE_TOPIC = "room:1:presence";
+const PLAYER_TOPIC = "room:1:player";
+
+const playerTitle = document.querySelector(".player-copy h3");
+const playerDescription = document.querySelector(".player-copy p");
+const playButton = document.querySelector(".player-controls .play-button");
+const playerControlButtons = document.querySelectorAll(".player-controls button");
 
 function hideAllScreens() {
     loginScreen.classList.add("hidden");
@@ -421,6 +430,183 @@ async function sendChatMessage() {
     chatInput.focus();
 }
 
+
+function updatePlayerUI(state) {
+    if (!state) return;
+
+    currentPlayerState = state;
+
+    if (playerTitle) {
+        playerTitle.textContent = state.servico
+            ? `${state.servico} selecionado`
+            : "Prontos para assistir juntos";
+    }
+
+    if (playerDescription) {
+        if (state.servico) {
+            const action =
+                state.status === "playing" ? "assistindo" : "pausado";
+
+            playerDescription.textContent =
+                `${action} • última alteração por ${state.atualizado_por || "Gui + Malu"}`;
+        } else {
+            playerDescription.textContent =
+                "Escolha um serviço e sincronizem a sessão.";
+        }
+    }
+
+    if (playButton) {
+        playButton.textContent =
+            state.status === "playing" ? "❚❚" : "▶";
+        playButton.title =
+            state.status === "playing" ? "Pausar para os dois" : "Reproduzir para os dois";
+    }
+
+    document
+        .querySelectorAll(".service, .room-services button")
+        .forEach((button) => {
+            button.classList.toggle(
+                "selected-service",
+                Boolean(state.servico) && button.dataset.service === state.servico
+            );
+        });
+}
+
+async function loadPlayerState() {
+    const { data, error } = await supabaseClient
+        .from("estado_player")
+        .select(
+            "id, sala_id, servico, titulo, conteudo_url, posicao_segundos, status, atualizado_por, atualizado_em"
+        )
+        .eq("sala_id", ROOM_ID)
+        .maybeSingle();
+
+    if (error) {
+        console.error("Erro ao carregar estado do player:", error);
+        return;
+    }
+
+    if (data) updatePlayerUI(data);
+}
+
+async function stopPlayerRealtime() {
+    if (!playerChannel) return;
+
+    try {
+        await supabaseClient.removeChannel(playerChannel);
+    } catch (error) {
+        console.warn("Não foi possível remover o canal do player:", error);
+    }
+
+    playerChannel = null;
+    playerStarted = false;
+}
+
+async function startPlayerRealtime() {
+    if (!currentUser || !currentParticipant || playerStarted) return;
+
+    await stopPlayerRealtime();
+    await loadPlayerState();
+
+    const {
+        data: { session }
+    } = await supabaseClient.auth.getSession();
+
+    if (!session?.access_token) return;
+
+    supabaseClient.realtime.setAuth(session.access_token);
+
+    playerChannel = supabaseClient.channel(PLAYER_TOPIC, {
+        config: {
+            private: true,
+            broadcast: {
+                self: false,
+                ack: true
+            }
+        }
+    });
+
+    playerChannel
+        .on(
+            "broadcast",
+            { event: "player_state" },
+            ({ payload }) => {
+                updatePlayerUI(payload);
+            }
+        )
+        .subscribe((status, error) => {
+            console.log("Player realtime status:", status, error || "");
+
+            if (status === "SUBSCRIBED") {
+                playerStarted = true;
+            }
+
+            if (status === "CHANNEL_ERROR") {
+                console.error("Erro no canal privado do player:", error);
+            }
+        });
+}
+
+async function saveAndBroadcastPlayerState(changes) {
+    if (!currentParticipant) return;
+
+    const payload = {
+        ...changes,
+        atualizado_por: currentParticipant.nome,
+        atualizado_em: new Date().toISOString()
+    };
+
+    const { data, error } = await supabaseClient
+        .from("estado_player")
+        .update(payload)
+        .eq("sala_id", ROOM_ID)
+        .select(
+            "id, sala_id, servico, titulo, conteudo_url, posicao_segundos, status, atualizado_por, atualizado_em"
+        )
+        .single();
+
+    if (error) {
+        console.error("Erro ao atualizar estado do player:", error);
+        alert("Não foi possível sincronizar a sala agora.");
+        return;
+    }
+
+    updatePlayerUI(data);
+
+    if (playerChannel) {
+        try {
+            await playerChannel.send({
+                type: "broadcast",
+                event: "player_state",
+                payload: data
+            });
+        } catch (broadcastError) {
+            console.error("Erro ao transmitir estado do player:", broadcastError);
+        }
+    }
+}
+
+async function selectStreamingService(service) {
+    if (!service) return;
+
+    await saveAndBroadcastPlayerState({
+        servico: service,
+        titulo: null,
+        conteudo_url: null,
+        posicao_segundos: 0,
+        status: "paused"
+    });
+}
+
+async function toggleSharedPlayback() {
+    const nextStatus =
+        currentPlayerState?.status === "playing" ? "paused" : "playing";
+
+    await saveAndBroadcastPlayerState({
+        status: nextStatus
+    });
+}
+
 async function startAuthenticatedExperience(user) {
     currentUser = user;
     currentParticipant = await loadParticipant(user);
@@ -441,6 +627,7 @@ async function startAuthenticatedExperience(user) {
 
     await startPresence();
     await startChatRealtime();
+    await startPlayerRealtime();
     showHero();
 }
 
@@ -498,6 +685,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", async () => {
+    await stopPlayerRealtime();
     await stopChatRealtime();
     await stopPresence();
     await supabaseClient.auth.signOut();
@@ -529,26 +717,22 @@ storyButton.addEventListener("click", () => {
 });
 
 document.querySelectorAll(".service, .room-services button").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
         const service = button.dataset.service;
-
         if (!service) return;
 
-        if (service === "YouTube") {
-            window.open(
-                "https://www.youtube.com",
-                "_blank",
-                "noopener,noreferrer"
-            );
-            return;
-        }
-
-        alert(
-            `${service}: a interface está pronta. A integração real com o serviço será tratada em uma etapa separada.`
-        );
+        await selectStreamingService(service);
+        showRoom();
     });
 });
 
+
+
+if (playButton) {
+    playButton.addEventListener("click", async () => {
+        await toggleSharedPlayback();
+    });
+}
 
 if (chatForm) {
     chatForm.addEventListener("submit", async (event) => {
@@ -607,6 +791,10 @@ window.addEventListener("beforeunload", () => {
 
     if (chatChannel) {
         supabaseClient.removeChannel(chatChannel);
+    }
+
+    if (playerChannel) {
+        supabaseClient.removeChannel(playerChannel);
     }
 });
 
