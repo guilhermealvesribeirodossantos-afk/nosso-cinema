@@ -121,6 +121,18 @@
                         <p>Escolha um serviço e sincronizem a sessão.</p>
                     </div>
                 </div>
+
+                <div class="youtube-source-card">
+                    <label for="youtubeUrlInput">Vídeo do YouTube</label>
+                    <div class="youtube-source-row">
+                        <input id="youtubeUrlInput" type="url" placeholder="Cole o link do YouTube aqui">
+                        <button id="loadYoutubeButton" type="button">Carregar vídeo</button>
+                    </div>
+                </div>
+
+                <div class="youtube-player-shell">
+                    <div id="youtubePlayer"></div>
+                </div>
                 <div class="player-controls">
                     <button id="rewindButton" type="button" title="Voltar 10 segundos">↺</button>
                     <button class="play-button" id="playButton" type="button" title="Reproduzir para os dois">▶</button>
