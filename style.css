@@ -256,3 +256,20 @@ img { display: block; max-width: 100%; }
         0 0 0 2px rgba(157,78,221,.12),
         0 0 22px rgba(157,78,221,.22);
 }
+
+
+/* PASSO 37.2 — CORREÇÃO AUTOMÁTICA DE ATRASO */
+.player-sync-bar.is-syncing .sync-dot {
+    color: #ffd36a;
+    text-shadow: 0 0 10px rgba(255,211,106,.7);
+}
+
+.player-sync-bar.is-good .sync-dot {
+    color: #7cff9f;
+    text-shadow: 0 0 10px rgba(124,255,159,.7);
+}
+
+.player-sync-bar.is-resyncing .sync-dot {
+    color: #ff91b9;
+    text-shadow: 0 0 10px rgba(255,145,185,.7);
+}
