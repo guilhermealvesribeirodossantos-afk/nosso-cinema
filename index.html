@@ -2,37 +2,24 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#09040f">
-
     <title>Nosso Cinema 💜</title>
 
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
     <main class="app">
 
-        <section class="hero">
-
+        <section class="hero" id="hero">
             <div class="hero-overlay"></div>
 
             <div class="hero-content">
+                <div class="heart">♡</div>
 
-                <div class="heart">
-                    ♡
-                </div>
-
-                <p class="small-title">
-                    VOCÊ + MALU
-                </p>
+                <p class="small-title">GUI + MALU</p>
 
                 <h1>
                     Nosso
@@ -40,167 +27,239 @@
                 </h1>
 
                 <p class="subtitle">
-                    Mesmo longe, ainda podemos
-                    viver cada história juntos.
+                    Mesmo longe, ainda podemos viver cada história juntos.
                 </p>
 
-                <button
-                    class="main-button"
-                    id="enterButton"
-                    type="button"
-                >
+                <button class="main-button" id="enterButton" type="button">
                     <span>▶</span>
                     Entrar no nosso cinema
                 </button>
 
-                <button
-                    class="secondary-button"
-                    type="button"
-                >
+                <button class="secondary-button" id="storyButton" type="button">
                     ♡ Nossa história
                 </button>
-
             </div>
-
         </section>
 
-
         <section class="home hidden" id="home">
-
             <header class="topbar">
-
                 <div>
-                    <p class="welcome">
-                        Boa noite, amor 💜
-                    </p>
-
-                    <h2>
-                        O que vamos assistir?
-                    </h2>
+                    <p class="welcome">Boa noite, amor 💜</p>
+                    <h2>O que vamos assistir?</h2>
                 </div>
 
-                <div class="couple-avatar">
-                    ♡
-                </div>
-
+                <img
+                    src="img/capa.jpg"
+                    alt="Gui e Malu"
+                    class="couple-avatar-img"
+                >
             </header>
 
-
             <section class="couple-card">
-
                 <div class="couple-info">
-
-                    <span class="online-dot"></span>
-
-                    <div>
-                        <strong>Você & Malu</strong>
-                        <p>Nossa sala está esperando</p>
+                    <div class="avatar-pair">
+                        <img src="img/perfil-voce.jpg" alt="Gui">
+                        <img src="img/perfil-malu.jpg" alt="Malu">
                     </div>
 
+                    <div>
+                        <strong>Gui & Malu</strong>
+                        <p>Nossa sala está esperando</p>
+                    </div>
                 </div>
 
-                <button type="button">
+                <button type="button" id="openRoomButton">
                     Entrar
                 </button>
-
             </section>
 
-
             <section class="section">
-
                 <div class="section-header">
                     <h3>Assistir juntos</h3>
                     <span>Escolha um serviço</span>
                 </div>
 
                 <div class="services">
-
-                    <button class="service netflix">
+                    <button class="service netflix" data-service="Netflix">
                         N
                         <small>Netflix</small>
                     </button>
 
-                    <button class="service prime">
+                    <button class="service prime" data-service="Prime Video">
                         prime
                         <small>Prime Video</small>
                     </button>
 
-                    <button class="service disney">
+                    <button class="service disney" data-service="Disney+">
                         Disney+
                         <small>Disney+</small>
                     </button>
 
-                    <button class="service max">
+                    <button class="service max" data-service="Max">
                         max
                         <small>Max</small>
                     </button>
 
-                    <button class="service youtube">
+                    <button class="service youtube" data-service="YouTube">
                         ▶
                         <small>YouTube</small>
                     </button>
 
-                    <button class="service more">
+                    <button class="service more" data-service="Outros">
                         +
                         <small>Outros</small>
                     </button>
-
                 </div>
-
             </section>
 
-
             <section class="love-card">
-
                 <span>♡</span>
 
                 <div>
-                    <p>
-                        NOSSO CANTINHO
-                    </p>
-
-                    <h3>
-                        Cada filme é mais uma memória nossa.
-                    </h3>
+                    <p>NOSSO CANTINHO</p>
+                    <h3>Cada filme é mais uma memória nossa.</h3>
                 </div>
-
             </section>
 
+            <section class="gallery-card">
+                <div class="section-header">
+                    <h3>Nossas fotos</h3>
+                    <span>Gui + Malu</span>
+                </div>
+
+                <div class="photo-grid">
+                    <img src="img/foto1.jpg" alt="Foto do casal 1">
+                    <img src="img/foto2.jpg" alt="Foto do casal 2">
+                    <img src="img/foto3.jpg" alt="Foto do casal 3">
+                    <img src="img/foto4.jpg" alt="Foto do casal 4">
+                    <img src="img/foto5.jpg" alt="Foto do casal 5">
+                </div>
+            </section>
 
             <nav class="bottom-nav">
-
-                <button class="active">
+                <button class="active" data-tab="inicio">
                     <span>⌂</span>
                     Início
                 </button>
 
-                <button>
+                <button data-tab="sala">
                     <span>▶</span>
                     Sala
                 </button>
 
-                <button>
+                <button data-tab="lista">
                     <span>♡</span>
                     Lista
                 </button>
 
-                <button>
+                <button data-tab="chat">
                     <span>☵</span>
                     Chat
                 </button>
 
-                <button>
+                <button data-tab="perfil">
                     <span>○</span>
                     Perfil
                 </button>
-
             </nav>
+        </section>
 
+        <section class="room hidden" id="room">
+            <header class="room-header">
+                <button class="icon-button" id="backHomeButton" type="button">←</button>
+
+                <div>
+                    <p class="room-kicker">NOSSA SALA</p>
+                    <h2>Gui + Malu</h2>
+                </div>
+
+                <button class="icon-button" type="button">⚙</button>
+            </header>
+
+            <div class="player-card">
+                <div class="player-preview">
+                    <img src="img/capa.jpg" alt="Gui e Malu">
+                    <div class="player-shade"></div>
+
+                    <div class="player-copy">
+                        <span class="live-badge">● 2 online</span>
+                        <h3>Prontos para assistir juntos</h3>
+                        <p>Escolha um serviço e sincronizem a sessão.</p>
+                    </div>
+                </div>
+
+                <div class="player-controls">
+                    <button type="button">↺</button>
+                    <button class="play-button" type="button">▶</button>
+                    <button type="button">↻</button>
+                </div>
+            </div>
+
+            <section class="room-panel">
+                <div class="section-header">
+                    <h3>Streaming</h3>
+                    <span>Escolha onde assistir</span>
+                </div>
+
+                <div class="room-services">
+                    <button data-service="Netflix">Netflix</button>
+                    <button data-service="Prime Video">Prime Video</button>
+                    <button data-service="Disney+">Disney+</button>
+                    <button data-service="Max">Max</button>
+                    <button data-service="YouTube">YouTube</button>
+                </div>
+            </section>
+
+            <section class="room-panel">
+                <div class="section-header">
+                    <h3>Conectados</h3>
+                    <span>2 pessoas</span>
+                </div>
+
+                <div class="connected-users">
+                    <div class="person-card">
+                        <img src="img/perfil-voce.jpg" alt="Gui">
+                        <div>
+                            <strong>Gui</strong>
+                            <span>online</span>
+                        </div>
+                    </div>
+
+                    <div class="person-card">
+                        <img src="img/perfil-malu.jpg" alt="Malu">
+                        <div>
+                            <strong>Malu</strong>
+                            <span>online</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="room-panel chat-preview">
+                <div class="section-header">
+                    <h3>Chat da sala</h3>
+                    <span>em tempo real</span>
+                </div>
+
+                <div class="message malu">
+                    <span>Malu</span>
+                    <p>amor olha essa parte kkkkk</p>
+                </div>
+
+                <div class="message gui">
+                    <span>Gui</span>
+                    <p>perfeita demais 😍</p>
+                </div>
+
+                <div class="chat-compose">
+                    <input type="text" placeholder="Enviar mensagem para Malu...">
+                    <button type="button">➤</button>
+                </div>
+            </section>
         </section>
 
     </main>
 
     <script src="app.js"></script>
-
 </body>
 </html>
