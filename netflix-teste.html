@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    >
+
+    <meta name="theme-color" content="#07060a">
+
+    <title>Nosso Cinema — Teste Netflix</title>
+
+    <link rel="stylesheet" href="netflix-teste.css">
+</head>
+
+<body>
+
+    <main class="app-shell">
+
+        <header class="topbar">
+
+            <div>
+                <p class="eyebrow">NOSSO CINEMA</p>
+                <h1>Teste Netflix</h1>
+            </div>
+
+            <span class="badge">
+                PASSO 39.1
+            </span>
+
+        </header>
+
+
+        <section class="hero-card">
+
+            <div class="netflix-mark">
+                N
+            </div>
+
+            <div>
+                <h2>Protótipo isolado</h2>
+
+                <p>
+                    Este teste serve apenas para descobrir como a Netflix
+                    se comporta dentro da experiência do Nosso Cinema
+                    sem mexer no site principal.
+                </p>
+            </div>
+
+        </section>
+
+
+        <section class="controls-card">
+
+            <button
+                id="openInsideBtn"
+                class="primary-btn"
+                type="button"
+            >
+                Abrir Netflix dentro do teste
+            </button>
+
+
+            <button
+                id="openExternalBtn"
+                class="secondary-btn"
+                type="button"
+            >
+                Abrir Netflix normalmente
+            </button>
+
+
+            <button
+                id="reloadBtn"
+                class="ghost-btn"
+                type="button"
+            >
+                Tentar novamente
+            </button>
+
+
+            <div class="status-box">
+
+                <span
+                    id="statusDot"
+                    class="status-dot idle"
+                ></span>
+
+                <div>
+
+                    <strong id="statusTitle">
+                        Aguardando teste
+                    </strong>
+
+                    <p id="statusText">
+                        Toque em “Abrir Netflix dentro do teste”.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <section class="browser-card">
+
+            <div class="browser-bar">
+
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+
+                <div class="address">
+                    netflix.com
+                </div>
+
+            </div>
+
+
+            <div class="frame-wrap">
+
+                <div
+                    id="framePlaceholder"
+                    class="frame-placeholder"
+                >
+
+                    <div class="big-n">
+                        N
+                    </div>
+
+                    <h3>
+                        Netflix ainda não foi carregada
+                    </h3>
+
+                    <p>
+                        O teste tentará abrir a página da Netflix
+                        dentro desta área.
+                    </p>
+
+                </div>
+
+
+                <iframe
+                    id="netflixFrame"
+                    title="Teste Netflix"
+                    allow="autoplay; encrypted-media; fullscreen"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    hidden
+                ></iframe>
+
+            </div>
+
+        </section>
+
+
+        <section class="notes-card">
+
+            <h3>O que observar</h3>
+
+            <p>
+                Se aparecer a interface da Netflix nesta área,
+                tire uma foto e me envie.
+
+                Se aparecer uma mensagem de bloqueio,
+                tela branca, tela preta ou “recusou conectar”,
+                também me envie a foto.
+            </p>
+
+        </section>
+
+    </main>
+
+
+    <script src="netflix-teste.js"></script>
+
+</body>
+</html>
