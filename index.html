@@ -138,6 +138,23 @@
                 </div>
             </section>
 
+            <section class="room-panel watch-content-panel">
+                <div class="section-header"><h3>O que vamos assistir?</h3><span>sincronizado 💜</span></div>
+                <form id="watchContentForm" class="watch-content-form">
+                    <label for="watchTitle">Filme ou série</label>
+                    <input id="watchTitle" type="text" maxlength="120" autocomplete="off" placeholder="Ex.: Stranger Things" required>
+
+                    <label for="watchUrl">Link do conteúdo</label>
+                    <input id="watchUrl" type="url" maxlength="1000" autocomplete="off" inputmode="url" placeholder="https://..." required>
+
+                    <div class="watch-actions">
+                        <button id="saveWatchButton" class="watch-save-button" type="submit">Salvar na sala</button>
+                        <button id="openWatchButton" class="watch-open-button" type="button" disabled>Abrir conteúdo ↗</button>
+                    </div>
+                    <p id="watchContentStatus" class="watch-content-status">Escolha o streaming e adicione o que vocês vão assistir.</p>
+                </form>
+            </section>
+
             <section class="room-panel">
                 <div class="section-header"><h3>Conectados</h3><span id="connectedCount">Sala privada</span></div>
                 <div class="connected-users">
