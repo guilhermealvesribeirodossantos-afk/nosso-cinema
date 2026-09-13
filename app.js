@@ -32,6 +32,14 @@ const liveBadge = document.getElementById("liveBadge");
 let currentUser = null;
 let currentParticipant = null;
 let presenceChannel = null;
+let chatChannel = null;
+let chatStarted = false;
+
+const chatForm = document.getElementById("chatForm");
+const chatInput = document.getElementById("chatInput");
+const chatSendButton = document.getElementById("chatSendButton");
+const messagesContainer = document.getElementById("messagesContainer");
+const chatStatus = document.getElementById("chatStatus");
 
 const ROOM_ID = 1;
 const PRESENCE_TOPIC = "room:1:presence";
@@ -225,6 +233,194 @@ async function startPresence() {
     });
 }
 
+
+function formatMessageTime(dateValue) {
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return "";
+
+    return new Intl.DateTimeFormat("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit"
+    }).format(date);
+}
+
+function createMessageElement(message) {
+    const wrapper = document.createElement("div");
+    const senderClass = message.remetente === "Gui" ? "gui" : "malu";
+    wrapper.className = `message ${senderClass}`;
+    wrapper.dataset.messageId = String(message.id);
+
+    const sender = document.createElement("span");
+    sender.textContent = message.remetente;
+
+    const text = document.createElement("p");
+    text.textContent = message.mensagem;
+
+    const time = document.createElement("time");
+    time.dateTime = message.enviado_em || "";
+    time.textContent = formatMessageTime(message.enviado_em);
+
+    wrapper.append(sender, text, time);
+    return wrapper;
+}
+
+function scrollChatToBottom() {
+    if (!messagesContainer) return;
+
+    requestAnimationFrame(() => {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    });
+}
+
+function renderMessages(messages) {
+    if (!messagesContainer) return;
+
+    messagesContainer.innerHTML = "";
+
+    if (!messages || messages.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "chat-empty";
+        empty.textContent = "Ainda não tem mensagem. Manda um oi 💜";
+        messagesContainer.appendChild(empty);
+        return;
+    }
+
+    messages.forEach((message) => {
+        messagesContainer.appendChild(createMessageElement(message));
+    });
+
+    scrollChatToBottom();
+}
+
+function appendMessage(message) {
+    if (!messagesContainer || !message) return;
+
+    if (messagesContainer.querySelector(`[data-message-id="${message.id}"]`)) {
+        return;
+    }
+
+    const empty = messagesContainer.querySelector(".chat-empty");
+    if (empty) empty.remove();
+
+    messagesContainer.appendChild(createMessageElement(message));
+    scrollChatToBottom();
+}
+
+async function loadMessages() {
+    if (!currentParticipant) return;
+
+    if (chatStatus) chatStatus.textContent = "carregando...";
+
+    const { data, error } = await supabaseClient
+        .from("mensagens")
+        .select("id, sala_id, remetente, mensagem, enviado_em")
+        .eq("sala_id", ROOM_ID)
+        .order("enviado_em", { ascending: true })
+        .limit(200);
+
+    if (error) {
+        console.error("Erro ao carregar mensagens:", error);
+        if (chatStatus) chatStatus.textContent = "erro ao carregar";
+        return;
+    }
+
+    renderMessages(data || []);
+    if (chatStatus) chatStatus.textContent = "tempo real 💜";
+}
+
+async function stopChatRealtime() {
+    if (!chatChannel) return;
+
+    try {
+        await supabaseClient.removeChannel(chatChannel);
+    } catch (error) {
+        console.warn("Não foi possível remover o canal do chat:", error);
+    }
+
+    chatChannel = null;
+    chatStarted = false;
+}
+
+async function startChatRealtime() {
+    if (!currentUser || !currentParticipant || chatStarted) return;
+
+    await stopChatRealtime();
+    await loadMessages();
+
+    const {
+        data: { session }
+    } = await supabaseClient.auth.getSession();
+
+    if (!session?.access_token) {
+        if (chatStatus) chatStatus.textContent = "sem conexão";
+        return;
+    }
+
+    supabaseClient.realtime.setAuth(session.access_token);
+
+    chatChannel = supabaseClient
+        .channel(`room:${ROOM_ID}:chat`)
+        .on(
+            "postgres_changes",
+            {
+                event: "INSERT",
+                schema: "public",
+                table: "mensagens",
+                filter: `sala_id=eq.${ROOM_ID}`
+            },
+            (payload) => {
+                appendMessage(payload.new);
+            }
+        )
+        .subscribe((status) => {
+            console.log("Chat realtime status:", status);
+
+            if (status === "SUBSCRIBED") {
+                chatStarted = true;
+                if (chatStatus) chatStatus.textContent = "tempo real 💜";
+            }
+
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                if (chatStatus) chatStatus.textContent = "reconectando...";
+            }
+        });
+}
+
+async function sendChatMessage() {
+    if (!currentParticipant || !chatInput) return;
+
+    const message = chatInput.value.trim();
+    if (!message) return;
+
+    chatInput.disabled = true;
+    chatSendButton.disabled = true;
+
+    const { data, error } = await supabaseClient
+        .from("mensagens")
+        .insert({
+            sala_id: ROOM_ID,
+            remetente: currentParticipant.nome,
+            mensagem: message
+        })
+        .select("id, sala_id, remetente, mensagem, enviado_em")
+        .single();
+
+    chatInput.disabled = false;
+    chatSendButton.disabled = false;
+
+    if (error) {
+        console.error("Erro ao enviar mensagem:", error);
+        if (chatStatus) chatStatus.textContent = "erro ao enviar";
+        chatInput.focus();
+        return;
+    }
+
+    chatInput.value = "";
+    appendMessage(data);
+    if (chatStatus) chatStatus.textContent = "tempo real 💜";
+    chatInput.focus();
+}
+
 async function startAuthenticatedExperience(user) {
     currentUser = user;
     currentParticipant = await loadParticipant(user);
@@ -244,6 +440,7 @@ async function startAuthenticatedExperience(user) {
     loginMessage.textContent = "";
 
     await startPresence();
+    await startChatRealtime();
     showHero();
 }
 
@@ -301,6 +498,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", async () => {
+    await stopChatRealtime();
     await stopPresence();
     await supabaseClient.auth.signOut();
 
@@ -351,6 +549,14 @@ document.querySelectorAll(".service, .room-services button").forEach((button) =>
     });
 });
 
+
+if (chatForm) {
+    chatForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await sendChatMessage();
+    });
+}
+
 document.querySelectorAll(".bottom-nav button").forEach((button) => {
     button.addEventListener("click", () => {
         document.querySelectorAll(".bottom-nav button").forEach((item) => {
@@ -365,6 +571,22 @@ document.querySelectorAll(".bottom-nav button").forEach((button) => {
 
         if (button.dataset.tab === "sala") {
             showRoom();
+        }
+
+        if (button.dataset.tab === "chat") {
+            showRoom();
+
+            setTimeout(() => {
+                const chatPanel = document.querySelector(".chat-preview");
+                if (chatPanel) {
+                    chatPanel.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center"
+                    });
+                }
+
+                if (chatInput) chatInput.focus();
+            }, 200);
         }
     });
 });
@@ -381,6 +603,10 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 window.addEventListener("beforeunload", () => {
     if (presenceChannel) {
         presenceChannel.untrack();
+    }
+
+    if (chatChannel) {
+        supabaseClient.removeChannel(chatChannel);
     }
 });
 
