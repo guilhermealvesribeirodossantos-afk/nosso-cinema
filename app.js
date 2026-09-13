@@ -64,53 +64,144 @@ function showRoom() {
 
 function getGreeting(name) {
     const hour = new Date().getHours();
+
     if (hour < 12) return `Bom dia, ${name} 💜`;
     if (hour < 18) return `Boa tarde, ${name} 💜`;
+
     return `Boa noite, ${name} 💜`;
 }
 
+function shortId(id) {
+    if (!id) return "sem-id";
+    return `${id.slice(0, 8)}...${id.slice(-4)}`;
+}
+
 async function loadParticipant(user) {
-    const { data, error } = await supabaseClient
+    /*
+        DEBUG:
+        Em vez de .single(), buscamos uma lista.
+        Assim conseguimos distinguir:
+        - erro de RLS/permissão
+        - 0 registros
+        - mais de 1 registro
+        - usuário correto
+    */
+    const { data, error, status, statusText } = await supabaseClient
         .from("participantes")
         .select("id, sala_id, nome, status, user_id")
-        .eq("user_id", user.id)
-        .single();
+        .eq("user_id", user.id);
 
     if (error) {
-        console.error("Erro ao carregar participante:", error);
-        return null;
+        console.error("ERRO SUPABASE PARTICIPANTES:", {
+            error,
+            status,
+            statusText,
+            userId: user.id
+        });
+
+        return {
+            ok: false,
+            type: "query_error",
+            message: error.message || "Erro desconhecido ao consultar participantes.",
+            code: error.code || "sem-codigo",
+            details: error.details || "",
+            hint: error.hint || "",
+            status,
+            statusText
+        };
     }
 
-    return data;
+    if (!Array.isArray(data)) {
+        return {
+            ok: false,
+            type: "invalid_response",
+            message: "O Supabase respondeu em um formato inesperado."
+        };
+    }
+
+    if (data.length === 0) {
+        return {
+            ok: false,
+            type: "not_found",
+            message:
+                `Login aceito, mas não existe participante com este usuário. UID: ${shortId(user.id)}`
+        };
+    }
+
+    if (data.length > 1) {
+        return {
+            ok: false,
+            type: "multiple_rows",
+            message:
+                `Foram encontrados ${data.length} participantes para o mesmo usuário.`
+        };
+    }
+
+    return {
+        ok: true,
+        participant: data[0]
+    };
 }
 
 async function startAuthenticatedExperience(user) {
     currentUser = user;
-    currentParticipant = await loadParticipant(user);
 
-    if (!currentParticipant) {
-        await supabaseClient.auth.signOut();
-        loginMessage.textContent = "Esta conta não está autorizada a entrar na sala Gui + Malu.";
+    loginMessage.textContent = "Login aceito. Verificando acesso à sala...";
+
+    const result = await loadParticipant(user);
+
+    if (!result.ok) {
+        console.error("FALHA AO VALIDAR PARTICIPANTE:", result);
+
+        /*
+            NÃO fazemos signOut automaticamente nesta versão de diagnóstico.
+            Isso permite que a sessão autenticada continue ativa enquanto
+            mostramos o erro real retornado pelo banco.
+        */
+        loginMessage.textContent =
+            `DIAGNÓSTICO: ${result.type} | ${result.message}` +
+            (result.code ? ` | código: ${result.code}` : "") +
+            (result.details ? ` | detalhes: ${result.details}` : "") +
+            (result.hint ? ` | dica: ${result.hint}` : "");
+
         showLogin();
         return;
     }
 
+    currentParticipant = result.participant;
+
     welcomeText.textContent = getGreeting(currentParticipant.nome);
-    roomStatusText.textContent = `${currentParticipant.nome}, nossa sala está pronta 💜`;
+
+    roomStatusText.textContent =
+        `${currentParticipant.nome}, nossa sala está pronta 💜`;
+
+    loginMessage.textContent = "";
+
     showHero();
 }
 
 async function checkSession() {
-    if (!SUPABASE_PUBLISHABLE_KEY || SUPABASE_PUBLISHABLE_KEY === "COLE_SUA_PUBLISHABLE_KEY_AQUI") {
-        loginMessage.textContent = "Falta configurar a Publishable Key no app.js.";
+    if (
+        !SUPABASE_PUBLISHABLE_KEY ||
+        SUPABASE_PUBLISHABLE_KEY === "COLE_SUA_PUBLISHABLE_KEY_AQUI"
+    ) {
+        loginMessage.textContent =
+            "Falta configurar a Publishable Key no app.js.";
         showLogin();
         return;
     }
 
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    const {
+        data: { session },
+        error
+    } = await supabaseClient.auth.getSession();
 
     if (error) {
-        console.error(error);
+        console.error("ERRO AO LER SESSÃO:", error);
+
+        loginMessage.textContent =
+            `DIAGNÓSTICO sessão: ${error.message || "erro desconhecido"}`;
+
         showLogin();
         return;
     }
@@ -133,26 +224,36 @@ loginForm.addEventListener("submit", async (event) => {
     loginButton.textContent = "Entrando...";
     loginMessage.textContent = "";
 
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+    });
 
     if (error) {
-        console.error(error);
-        loginMessage.textContent = "E-mail ou senha incorretos. Confira e tente novamente.";
+        console.error("ERRO LOGIN:", error);
+
+        loginMessage.textContent =
+            `Erro no login: ${error.message}`;
+
         loginButton.disabled = false;
         loginButton.textContent = "Entrar no Nosso Cinema";
         return;
     }
 
     loginForm.reset();
+
     loginButton.disabled = false;
     loginButton.textContent = "Entrar no Nosso Cinema";
+
     await startAuthenticatedExperience(data.user);
 });
 
 logoutButton.addEventListener("click", async () => {
     await supabaseClient.auth.signOut();
+
     currentUser = null;
     currentParticipant = null;
+
     loginMessage.textContent = "";
     showLogin();
 });
@@ -163,36 +264,61 @@ backHomeButton.addEventListener("click", showHome);
 
 storyButton.addEventListener("click", () => {
     showHome();
+
     setTimeout(() => {
         const gallery = document.querySelector(".gallery-card");
-        if (gallery) gallery.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        if (gallery) {
+            gallery.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+        }
     }, 250);
 });
 
 document.querySelectorAll(".service, .room-services button").forEach((button) => {
     button.addEventListener("click", () => {
         const service = button.dataset.service;
+
         if (!service) return;
 
         if (service === "YouTube") {
-            window.open("https://www.youtube.com", "_blank", "noopener,noreferrer");
+            window.open(
+                "https://www.youtube.com",
+                "_blank",
+                "noopener,noreferrer"
+            );
             return;
         }
 
-        alert(`${service}: a interface está pronta. A integração real com o serviço será tratada em uma etapa separada.`);
+        alert(
+            `${service}: a interface está pronta. A integração real com o serviço será tratada em uma etapa separada.`
+        );
     });
 });
 
 document.querySelectorAll(".bottom-nav button").forEach((button) => {
     button.addEventListener("click", () => {
-        document.querySelectorAll(".bottom-nav button").forEach((item) => item.classList.remove("active"));
+        document.querySelectorAll(".bottom-nav button").forEach((item) => {
+            item.classList.remove("active");
+        });
+
         button.classList.add("active");
-        if (button.dataset.tab === "inicio") showHome();
-        if (button.dataset.tab === "sala") showRoom();
+
+        if (button.dataset.tab === "inicio") {
+            showHome();
+        }
+
+        if (button.dataset.tab === "sala") {
+            showRoom();
+        }
     });
 });
 
 supabaseClient.auth.onAuthStateChange((event, session) => {
+    console.log("AUTH EVENT:", event, session?.user?.id || null);
+
     if (event === "SIGNED_OUT" && !session) {
         currentUser = null;
         currentParticipant = null;
