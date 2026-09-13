@@ -50,15 +50,14 @@ const PLAYER_TOPIC = "room:1:player";
 
 const playerTitle = document.querySelector(".player-copy h3");
 const playerDescription = document.querySelector(".player-copy p");
-const playButton = document.querySelector(".player-controls .play-button");
+const playButton = document.getElementById("playButton");
+const rewindButton = document.getElementById("rewindButton");
+const forwardButton = document.getElementById("forwardButton");
+const playerTime = document.getElementById("playerTime");
+const playerSyncText = document.getElementById("playerSyncText");
 const playerControlButtons = document.querySelectorAll(".player-controls button");
 
-const watchContentForm = document.getElementById("watchContentForm");
-const watchTitleInput = document.getElementById("watchTitle");
-const watchUrlInput = document.getElementById("watchUrl");
-const saveWatchButton = document.getElementById("saveWatchButton");
-const openWatchButton = document.getElementById("openWatchButton");
-const watchContentStatus = document.getElementById("watchContentStatus");
+let playerClockInterval = null;
 
 function hideAllScreens() {
     loginScreen.classList.add("hidden");
@@ -438,42 +437,85 @@ async function sendChatMessage() {
 }
 
 
+
+function clampPlayerPosition(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return 0;
+    return Math.max(0, number);
+}
+
+function getEffectivePlayerPosition(state = currentPlayerState) {
+    if (!state) return 0;
+
+    const savedPosition = clampPlayerPosition(state.posicao_segundos);
+
+    if (state.status !== "playing") {
+        return savedPosition;
+    }
+
+    const updatedAt = new Date(state.atualizado_em).getTime();
+    if (!Number.isFinite(updatedAt)) {
+        return savedPosition;
+    }
+
+    const elapsedSeconds = Math.max(0, (Date.now() - updatedAt) / 1000);
+    return savedPosition + elapsedSeconds;
+}
+
+function formatPlayerPosition(totalSeconds) {
+    const seconds = Math.floor(clampPlayerPosition(totalSeconds));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+
+    if (hours > 0) {
+        return [
+            String(hours).padStart(2, "0"),
+            String(minutes).padStart(2, "0"),
+            String(remainingSeconds).padStart(2, "0")
+        ].join(":");
+    }
+
+    return [
+        String(minutes).padStart(2, "0"),
+        String(remainingSeconds).padStart(2, "0")
+    ].join(":");
+}
+
+function updatePlayerClock() {
+    if (!playerTime) return;
+
+    const position = getEffectivePlayerPosition();
+    playerTime.textContent = formatPlayerPosition(position);
+}
+
+function startPlayerClock() {
+    if (playerClockInterval) {
+        clearInterval(playerClockInterval);
+    }
+
+    updatePlayerClock();
+
+    playerClockInterval = setInterval(() => {
+        updatePlayerClock();
+    }, 500);
+}
+
+function stopPlayerClock() {
+    if (!playerClockInterval) return;
+    clearInterval(playerClockInterval);
+    playerClockInterval = null;
+}
+
 function updatePlayerUI(state) {
     if (!state) return;
 
     currentPlayerState = state;
 
-    if (watchTitleInput && document.activeElement !== watchTitleInput) {
-        watchTitleInput.value = state.titulo || "";
-    }
-
-    if (watchUrlInput && document.activeElement !== watchUrlInput) {
-        watchUrlInput.value = state.conteudo_url || "";
-    }
-
-    if (openWatchButton) {
-        openWatchButton.disabled = !state.conteudo_url;
-    }
-
-    if (watchContentStatus) {
-        if (state.titulo && state.servico) {
-            watchContentStatus.textContent =
-                `${state.titulo} • ${state.servico} • salvo por ${state.atualizado_por || "Gui + Malu"}`;
-        } else if (state.titulo) {
-            watchContentStatus.textContent =
-                `${state.titulo} • salvo por ${state.atualizado_por || "Gui + Malu"}`;
-        } else {
-            watchContentStatus.textContent =
-                "Escolha o streaming e adicione o que vocês vão assistir.";
-        }
-    }
-
     if (playerTitle) {
-        playerTitle.textContent = state.titulo
-            ? state.titulo
-            : state.servico
-                ? `${state.servico} selecionado`
-                : "Prontos para assistir juntos";
+        playerTitle.textContent = state.servico
+            ? `${state.servico} selecionado`
+            : "Prontos para assistir juntos";
     }
 
     if (playerDescription) {
@@ -489,19 +531,7 @@ function updatePlayerUI(state) {
         }
     }
 
-    
-if (watchContentForm) {
-    watchContentForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        await saveWatchContent();
-    });
-}
-
-if (openWatchButton) {
-    openWatchButton.addEventListener("click", openWatchContent);
-}
-
-if (playButton) {
+    if (playButton) {
         playButton.textContent =
             state.status === "playing" ? "❚❚" : "▶";
         playButton.title =
@@ -516,6 +546,14 @@ if (playButton) {
                 Boolean(state.servico) && button.dataset.service === state.servico
             );
         });
+
+    if (playerSyncText) {
+        const action = state.status === "playing" ? "reproduzindo" : "pausado";
+        playerSyncText.textContent =
+            `${action} • sincronizado por ${state.atualizado_por || "Gui + Malu"}`;
+    }
+
+    updatePlayerClock();
 }
 
 async function loadPlayerState() {
@@ -637,85 +675,31 @@ async function selectStreamingService(service) {
 
     await saveAndBroadcastPlayerState({
         servico: service,
+        titulo: null,
+        conteudo_url: null,
         posicao_segundos: 0,
         status: "paused"
     });
-}
-
-
-function normalizeWatchUrl(value) {
-    try {
-        const url = new URL(value);
-
-        if (url.protocol !== "https:" && url.protocol !== "http:") {
-            return null;
-        }
-
-        return url.href;
-    } catch {
-        return null;
-    }
-}
-
-async function saveWatchContent() {
-    if (!watchTitleInput || !watchUrlInput) return;
-
-    const title = watchTitleInput.value.trim();
-    const normalizedUrl = normalizeWatchUrl(watchUrlInput.value.trim());
-
-    if (!title) {
-        if (watchContentStatus) {
-            watchContentStatus.textContent = "Digite o nome do filme ou série.";
-        }
-        watchTitleInput.focus();
-        return;
-    }
-
-    if (!normalizedUrl) {
-        if (watchContentStatus) {
-            watchContentStatus.textContent = "Cole um link válido começando com http:// ou https://.";
-        }
-        watchUrlInput.focus();
-        return;
-    }
-
-    if (saveWatchButton) {
-        saveWatchButton.disabled = true;
-        saveWatchButton.textContent = "Salvando...";
-    }
-
-    await saveAndBroadcastPlayerState({
-        titulo: title,
-        conteudo_url: normalizedUrl
-    });
-
-    if (saveWatchButton) {
-        saveWatchButton.disabled = false;
-        saveWatchButton.textContent = "Salvar na sala";
-    }
-}
-
-function openWatchContent() {
-    const url = currentPlayerState?.conteudo_url;
-    if (!url) return;
-
-    const normalizedUrl = normalizeWatchUrl(url);
-    if (!normalizedUrl) {
-        if (watchContentStatus) {
-            watchContentStatus.textContent = "O link salvo não é válido.";
-        }
-        return;
-    }
-
-    window.open(normalizedUrl, "_blank", "noopener,noreferrer");
 }
 
 async function toggleSharedPlayback() {
     const nextStatus =
         currentPlayerState?.status === "playing" ? "paused" : "playing";
 
+    const effectivePosition = getEffectivePlayerPosition();
+
     await saveAndBroadcastPlayerState({
+        posicao_segundos: effectivePosition,
         status: nextStatus
+    });
+}
+
+async function seekSharedPlayback(offsetSeconds) {
+    const currentPosition = getEffectivePlayerPosition();
+    const nextPosition = Math.max(0, currentPosition + offsetSeconds);
+
+    await saveAndBroadcastPlayerState({
+        posicao_segundos: nextPosition
     });
 }
 
@@ -740,6 +724,7 @@ async function startAuthenticatedExperience(user) {
     await startPresence();
     await startChatRealtime();
     await startPlayerRealtime();
+    startPlayerClock();
     showHero();
 }
 
@@ -797,6 +782,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", async () => {
+    stopPlayerClock();
     await stopPlayerRealtime();
     await stopChatRealtime();
     await stopPresence();
@@ -840,9 +826,21 @@ document.querySelectorAll(".service, .room-services button").forEach((button) =>
 
 
 
+if (rewindButton) {
+    rewindButton.addEventListener("click", async () => {
+        await seekSharedPlayback(-10);
+    });
+}
+
 if (playButton) {
     playButton.addEventListener("click", async () => {
         await toggleSharedPlayback();
+    });
+}
+
+if (forwardButton) {
+    forwardButton.addEventListener("click", async () => {
+        await seekSharedPlayback(10);
     });
 }
 
@@ -897,6 +895,8 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 });
 
 window.addEventListener("beforeunload", () => {
+    stopPlayerClock();
+
     if (presenceChannel) {
         presenceChannel.untrack();
     }
