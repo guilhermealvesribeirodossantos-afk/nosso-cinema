@@ -72,6 +72,9 @@ let youtubePendingVideoId = null;
 let youtubeSyncGuardUntil = 0;
 let youtubeLastBroadcastAt = 0;
 let youtubeStatePollInterval = null;
+let youtubeApiLoading = false;
+let youtubeApiLoaded = false;
+let youtubeApiLoadTimer = null;
 
 const YOUTUBE_SYNC_TOLERANCE_SECONDS = 0.9;
 const YOUTUBE_HARD_SEEK_SECONDS = 1.8;
@@ -731,6 +734,22 @@ function createYoutubePlayer() {
 
                 startYoutubeStatePoll();
             },
+            onError: (event) => {
+                console.error("Erro do YouTube Player:", event.data);
+
+                const messages = {
+                    2: "Link ou ID do vídeo inválido.",
+                    5: "O vídeo não pode ser reproduzido neste player.",
+                    100: "Vídeo removido ou privado.",
+                    101: "O dono do vídeo bloqueou reprodução fora do YouTube.",
+                    150: "O dono do vídeo bloqueou reprodução fora do YouTube."
+                };
+
+                setPlayerSyncVisual(
+                    "resyncing",
+                    messages[event.data] || `erro do YouTube (${event.data})`
+                );
+            },
             onStateChange: async (event) => {
                 if (shouldIgnoreYoutubeEvent()) return;
 
@@ -755,9 +774,77 @@ function createYoutubePlayer() {
     });
 }
 
+function loadYoutubeIframeApi() {
+    if (window.YT?.Player) {
+        youtubeApiLoaded = true;
+        youtubeApiLoading = false;
+        createYoutubePlayer();
+        return;
+    }
+
+    if (youtubeApiLoading) return;
+
+    youtubeApiLoading = true;
+    setPlayerSyncVisual("syncing", "carregando YouTube...");
+
+    // Remove uma tentativa antiga incompleta, se existir.
+    const oldScript = document.getElementById("youtube-iframe-api-script");
+    if (oldScript) oldScript.remove();
+
+    const script = document.createElement("script");
+    script.id = "youtube-iframe-api-script";
+    script.src = "https://www.youtube.com/iframe_api";
+    script.async = true;
+
+    script.onload = () => {
+        console.log("YouTube iframe_api: script carregado");
+        youtubeApiLoaded = true;
+        youtubeApiLoading = false;
+
+        // A API ainda pode terminar de preparar window.YT após o onload.
+        setTimeout(() => {
+            if (window.YT?.Player) {
+                createYoutubePlayer();
+            }
+        }, 100);
+    };
+
+    script.onerror = () => {
+        youtubeApiLoaded = false;
+        youtubeApiLoading = false;
+        setPlayerSyncVisual("resyncing", "não foi possível carregar o YouTube");
+        console.error("Falha ao carregar https://www.youtube.com/iframe_api");
+    };
+
+    document.head.appendChild(script);
+
+    clearTimeout(youtubeApiLoadTimer);
+    youtubeApiLoadTimer = setTimeout(() => {
+        if (!window.YT?.Player) {
+            youtubeApiLoading = false;
+            setPlayerSyncVisual("resyncing", "YouTube demorou para carregar");
+            console.warn("A API do YouTube não ficou disponível após 8 segundos.");
+        }
+    }, 8000);
+}
+
 window.onYouTubeIframeAPIReady = function () {
+    youtubeApiLoaded = true;
+    youtubeApiLoading = false;
+    clearTimeout(youtubeApiLoadTimer);
     createYoutubePlayer();
 };
+
+function ensureYoutubePlayerInitialized() {
+    if (window.YT?.Player) {
+        youtubeApiLoaded = true;
+        youtubeApiLoading = false;
+        createYoutubePlayer();
+        return;
+    }
+
+    loadYoutubeIframeApi();
+}
 
 async function loadYoutubeFromInput() {
     const raw = youtubeUrlInput?.value || "";
@@ -783,8 +870,11 @@ async function loadYoutubeFromInput() {
     if (youtubePlayerReady) {
         youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
         youtubePlayer.cueVideoById(videoId);
+        setPlayerSyncVisual("good", "vídeo carregado");
     } else {
         youtubePendingVideoId = videoId;
+        setPlayerSyncVisual("syncing", "iniciando player do YouTube...");
+        loadYoutubeIframeApi();
     }
 }
 
@@ -1318,4 +1408,5 @@ window.addEventListener("beforeunload", () => {
     }
 });
 
+loadYoutubeIframeApi();
 checkSession();
