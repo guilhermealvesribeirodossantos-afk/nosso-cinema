@@ -1,9 +1,4 @@
 const SUPABASE_URL = "https://alhlzltprkxigzuxfura.supabase.co";
-
-/*
-    COLE SUA PUBLISHABLE KEY ENTRE AS ASPAS ABAIXO.
-    Ela começa com: sb_publishable_
-*/
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_2iI7ahg95uaAhyZl7A9a9g_G4iA7S2U";
 
 const supabaseClient = window.supabase.createClient(
@@ -29,8 +24,17 @@ const logoutButton = document.getElementById("logoutButton");
 const welcomeText = document.getElementById("welcomeText");
 const roomStatusText = document.getElementById("roomStatusText");
 
+const guiStatus = document.getElementById("guiStatus");
+const maluStatus = document.getElementById("maluStatus");
+const connectedCount = document.getElementById("connectedCount");
+const liveBadge = document.getElementById("liveBadge");
+
 let currentUser = null;
 let currentParticipant = null;
+let presenceChannel = null;
+
+const ROOM_ID = 1;
+const PRESENCE_TOPIC = "room:1:presence";
 
 function hideAllScreens() {
     loginScreen.classList.add("hidden");
@@ -71,137 +75,186 @@ function getGreeting(name) {
     return `Boa noite, ${name} 💜`;
 }
 
-function shortId(id) {
-    if (!id) return "sem-id";
-    return `${id.slice(0, 8)}...${id.slice(-4)}`;
-}
-
 async function loadParticipant(user) {
-    /*
-        DEBUG:
-        Em vez de .single(), buscamos uma lista.
-        Assim conseguimos distinguir:
-        - erro de RLS/permissão
-        - 0 registros
-        - mais de 1 registro
-        - usuário correto
-    */
-    const { data, error, status, statusText } = await supabaseClient
+    const { data, error } = await supabaseClient
         .from("participantes")
         .select("id, sala_id, nome, status, user_id")
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .maybeSingle();
 
     if (error) {
-        console.error("ERRO SUPABASE PARTICIPANTES:", {
-            error,
-            status,
-            statusText,
-            userId: user.id
+        console.error("Erro ao carregar participante:", error);
+        return null;
+    }
+
+    return data;
+}
+
+function setPersonStatus(element, online) {
+    if (!element) return;
+
+    if (online) {
+        element.textContent = "● online";
+        element.style.color = "#7cff9f";
+    } else {
+        element.textContent = "● offline";
+        element.style.color = "#8f7d9c";
+    }
+}
+
+function updatePresenceUI(state) {
+    const allPresences = Object.values(state || {}).flat();
+
+    const namesOnline = new Set(
+        allPresences
+            .map((presence) => presence?.nome)
+            .filter(Boolean)
+    );
+
+    const guiOnline = namesOnline.has("Gui");
+    const maluOnline = namesOnline.has("Malu");
+
+    setPersonStatus(guiStatus, guiOnline);
+    setPersonStatus(maluStatus, maluOnline);
+
+    const onlineCount = [guiOnline, maluOnline].filter(Boolean).length;
+
+    if (connectedCount) {
+        connectedCount.textContent =
+            onlineCount === 1 ? "1 pessoa online" : `${onlineCount} pessoas online`;
+    }
+
+    if (liveBadge) {
+        liveBadge.textContent =
+            onlineCount === 2
+                ? "● Gui e Malu online"
+                : onlineCount === 1
+                    ? "● 1 online"
+                    : "● ninguém online";
+    }
+
+    if (roomStatusText) {
+        if (guiOnline && maluOnline) {
+            roomStatusText.textContent = "Vocês dois estão online 💜";
+        } else if (currentParticipant) {
+            const otherName = currentParticipant.nome === "Gui" ? "Malu" : "Gui";
+            roomStatusText.textContent = `Você está online. ${otherName} ainda não entrou.`;
+        }
+    }
+}
+
+async function stopPresence() {
+    if (!presenceChannel) return;
+
+    try {
+        await presenceChannel.untrack();
+    } catch (error) {
+        console.warn("Não foi possível remover o Presence:", error);
+    }
+
+    try {
+        await supabaseClient.removeChannel(presenceChannel);
+    } catch (error) {
+        console.warn("Não foi possível remover o canal:", error);
+    }
+
+    presenceChannel = null;
+}
+
+async function startPresence() {
+    if (!currentUser || !currentParticipant) return;
+
+    await stopPresence();
+
+    const {
+        data: { session }
+    } = await supabaseClient.auth.getSession();
+
+    if (!session?.access_token) {
+        console.error("Sessão sem access_token para o Realtime.");
+        return;
+    }
+
+    supabaseClient.realtime.setAuth(session.access_token);
+
+    presenceChannel = supabaseClient.channel(PRESENCE_TOPIC, {
+        config: {
+            private: true,
+            presence: {
+                key: currentUser.id
+            }
+        }
+    });
+
+    presenceChannel
+        .on("presence", { event: "sync" }, () => {
+            const state = presenceChannel.presenceState();
+            console.log("Presence sync:", state);
+            updatePresenceUI(state);
+        })
+        .on("presence", { event: "join" }, ({ key, newPresences }) => {
+            console.log("Presence join:", key, newPresences);
+        })
+        .on("presence", { event: "leave" }, ({ key, leftPresences }) => {
+            console.log("Presence leave:", key, leftPresences);
         });
 
-        return {
-            ok: false,
-            type: "query_error",
-            message: error.message || "Erro desconhecido ao consultar participantes.",
-            code: error.code || "sem-codigo",
-            details: error.details || "",
-            hint: error.hint || "",
-            status,
-            statusText
-        };
-    }
+    presenceChannel.subscribe(async (status) => {
+        console.log("Realtime status:", status);
 
-    if (!Array.isArray(data)) {
-        return {
-            ok: false,
-            type: "invalid_response",
-            message: "O Supabase respondeu em um formato inesperado."
-        };
-    }
+        if (status === "SUBSCRIBED") {
+            const trackStatus = await presenceChannel.track({
+                user_id: currentUser.id,
+                nome: currentParticipant.nome,
+                sala_id: ROOM_ID,
+                online_at: new Date().toISOString()
+            });
 
-    if (data.length === 0) {
-        return {
-            ok: false,
-            type: "not_found",
-            message:
-                `Login aceito, mas não existe participante com este usuário. UID: ${shortId(user.id)}`
-        };
-    }
+            console.log("Presence track:", trackStatus);
+        }
 
-    if (data.length > 1) {
-        return {
-            ok: false,
-            type: "multiple_rows",
-            message:
-                `Foram encontrados ${data.length} participantes para o mesmo usuário.`
-        };
-    }
+        if (status === "CHANNEL_ERROR") {
+            console.error("Erro ao conectar no canal privado de Presence.");
+            if (liveBadge) liveBadge.textContent = "● erro no realtime";
+        }
 
-    return {
-        ok: true,
-        participant: data[0]
-    };
+        if (status === "TIMED_OUT") {
+            console.error("Realtime expirou ao tentar conectar.");
+            if (liveBadge) liveBadge.textContent = "● realtime indisponível";
+        }
+    });
 }
 
 async function startAuthenticatedExperience(user) {
     currentUser = user;
+    currentParticipant = await loadParticipant(user);
 
-    loginMessage.textContent = "Login aceito. Verificando acesso à sala...";
-
-    const result = await loadParticipant(user);
-
-    if (!result.ok) {
-        console.error("FALHA AO VALIDAR PARTICIPANTE:", result);
-
-        /*
-            NÃO fazemos signOut automaticamente nesta versão de diagnóstico.
-            Isso permite que a sessão autenticada continue ativa enquanto
-            mostramos o erro real retornado pelo banco.
-        */
+    if (!currentParticipant) {
         loginMessage.textContent =
-            `DIAGNÓSTICO: ${result.type} | ${result.message}` +
-            (result.code ? ` | código: ${result.code}` : "") +
-            (result.details ? ` | detalhes: ${result.details}` : "") +
-            (result.hint ? ` | dica: ${result.hint}` : "");
+            "Esta conta não está autorizada a entrar na sala Gui + Malu.";
 
         showLogin();
         return;
     }
 
-    currentParticipant = result.participant;
-
     welcomeText.textContent = getGreeting(currentParticipant.nome);
-
     roomStatusText.textContent =
         `${currentParticipant.nome}, nossa sala está pronta 💜`;
 
     loginMessage.textContent = "";
 
+    await startPresence();
     showHero();
 }
 
 async function checkSession() {
-    if (
-        !SUPABASE_PUBLISHABLE_KEY ||
-        SUPABASE_PUBLISHABLE_KEY === "COLE_SUA_PUBLISHABLE_KEY_AQUI"
-    ) {
-        loginMessage.textContent =
-            "Falta configurar a Publishable Key no app.js.";
-        showLogin();
-        return;
-    }
-
     const {
         data: { session },
         error
     } = await supabaseClient.auth.getSession();
 
     if (error) {
-        console.error("ERRO AO LER SESSÃO:", error);
-
-        loginMessage.textContent =
-            `DIAGNÓSTICO sessão: ${error.message || "erro desconhecido"}`;
-
+        console.error("Erro ao ler sessão:", error);
         showLogin();
         return;
     }
@@ -230,10 +283,10 @@ loginForm.addEventListener("submit", async (event) => {
     });
 
     if (error) {
-        console.error("ERRO LOGIN:", error);
+        console.error("Erro no login:", error);
 
         loginMessage.textContent =
-            `Erro no login: ${error.message}`;
+            "E-mail ou senha incorretos. Confira e tente novamente.";
 
         loginButton.disabled = false;
         loginButton.textContent = "Entrar no Nosso Cinema";
@@ -241,7 +294,6 @@ loginForm.addEventListener("submit", async (event) => {
     }
 
     loginForm.reset();
-
     loginButton.disabled = false;
     loginButton.textContent = "Entrar no Nosso Cinema";
 
@@ -249,6 +301,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", async () => {
+    await stopPresence();
     await supabaseClient.auth.signOut();
 
     currentUser = null;
@@ -317,11 +370,17 @@ document.querySelectorAll(".bottom-nav button").forEach((button) => {
 });
 
 supabaseClient.auth.onAuthStateChange((event, session) => {
-    console.log("AUTH EVENT:", event, session?.user?.id || null);
+    console.log("Auth event:", event);
 
     if (event === "SIGNED_OUT" && !session) {
         currentUser = null;
         currentParticipant = null;
+    }
+});
+
+window.addEventListener("beforeunload", () => {
+    if (presenceChannel) {
+        presenceChannel.untrack();
     }
 });
 
