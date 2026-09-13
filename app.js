@@ -29,6 +29,7 @@ storyButton.addEventListener("click", () => {
 
     setTimeout(() => {
         const gallery = document.querySelector(".gallery-card");
+
         if (gallery) {
             gallery.scrollIntoView({
                 behavior: "smooth",
@@ -50,7 +51,7 @@ document.querySelectorAll(".service, .room-services button").forEach((button) =>
         }
 
         alert(
-            `${service}: a interface já está pronta. A integração real com streaming será adicionada na próxima etapa.`
+            `${service}: a interface já está pronta. A integração real com streaming será adicionada em uma próxima etapa.`
         );
     });
 });
@@ -62,6 +63,10 @@ document.querySelectorAll(".bottom-nav button").forEach((button) => {
         });
 
         button.classList.add("active");
+
+        if (button.dataset.tab === "inicio") {
+            showHome();
+        }
 
         if (button.dataset.tab === "sala") {
             showRoom();
