@@ -157,3 +157,63 @@ img { display: block; max-width: 100%; }
     body { display: flex; justify-content: center; }
     .app { max-width: 520px; border-left: 1px solid rgba(199,125,255,.08); border-right: 1px solid rgba(199,125,255,.08); box-shadow: 0 0 90px rgba(123,44,191,.16); }
 }
+
+/* CHAT EM TEMPO REAL */
+.messages-container {
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 4px 2px 2px;
+    scroll-behavior: smooth;
+}
+
+.chat-empty {
+    padding: 18px 10px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.chat-preview .message {
+    width: fit-content;
+    min-width: 80px;
+    max-width: 82%;
+}
+
+.chat-preview .message.gui {
+    margin-left: auto;
+    text-align: right;
+}
+
+.chat-preview .message.malu {
+    margin-right: auto;
+}
+
+.chat-preview .message.gui span {
+    color: var(--pink);
+}
+
+.chat-preview .message.gui p {
+    background: linear-gradient(145deg, rgba(157,78,221,.34), rgba(255,79,216,.20));
+}
+
+.chat-preview .message.malu p {
+    background: rgba(157,78,221,.18);
+}
+
+.chat-preview .message time {
+    display: block;
+    margin-top: 4px;
+    color: #7f7189;
+    font-size: 9px;
+}
+
+.chat-compose input:disabled,
+.chat-compose button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+.chat-compose button {
+    cursor: pointer;
+    font-weight: 900;
+}
