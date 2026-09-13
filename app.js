@@ -56,11 +56,28 @@ const forwardButton = document.getElementById("forwardButton");
 const playerTime = document.getElementById("playerTime");
 const playerSyncText = document.getElementById("playerSyncText");
 const playerSyncBar = document.querySelector(".player-sync-bar");
+
+const youtubeUrlInput = document.getElementById("youtubeUrlInput");
+const loadYoutubeButton = document.getElementById("loadYoutubeButton");
+
 const playerControlButtons = document.querySelectorAll(".player-controls button");
 
 let playerClockInterval = null;
 let lastRealtimePlayerStateAt = 0;
 let driftCorrectionCooldownUntil = 0;
+
+let youtubePlayer = null;
+let youtubePlayerReady = false;
+let youtubePendingVideoId = null;
+let youtubeSyncGuardUntil = 0;
+let youtubeLastBroadcastAt = 0;
+let youtubeStatePollInterval = null;
+
+const YOUTUBE_SYNC_TOLERANCE_SECONDS = 0.9;
+const YOUTUBE_HARD_SEEK_SECONDS = 1.8;
+const YOUTUBE_GUARD_MS = 1200;
+const YOUTUBE_BROADCAST_THROTTLE_MS = 900;
+
 
 const PLAYER_DRIFT_IGNORE_SECONDS = 0.6;
 const PLAYER_DRIFT_SOFT_SECONDS = 1.2;
@@ -518,6 +535,259 @@ function stopPlayerClock() {
 }
 
 
+
+function extractYoutubeVideoId(value) {
+    if (!value) return null;
+
+    const raw = value.trim();
+
+    if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) {
+        return raw;
+    }
+
+    try {
+        const url = new URL(raw);
+
+        if (url.hostname.includes("youtu.be")) {
+            const id = url.pathname.replace("/", "").split("/")[0];
+            return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+        }
+
+        if (url.hostname.includes("youtube.com")) {
+            const watchId = url.searchParams.get("v");
+            if (watchId && /^[a-zA-Z0-9_-]{11}$/.test(watchId)) {
+                return watchId;
+            }
+
+            const parts = url.pathname.split("/").filter(Boolean);
+            const markerIndex = parts.findIndex((part) =>
+                ["embed", "shorts", "live"].includes(part)
+            );
+
+            if (markerIndex >= 0 && parts[markerIndex + 1]) {
+                const id = parts[markerIndex + 1];
+                return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+            }
+        }
+    } catch (error) {
+        return null;
+    }
+
+    return null;
+}
+
+function getYoutubePlayerStateName(state) {
+    if (!window.YT?.PlayerState) return "unknown";
+    if (state === YT.PlayerState.PLAYING) return "playing";
+    if (state === YT.PlayerState.PAUSED) return "paused";
+    if (state === YT.PlayerState.BUFFERING) return "buffering";
+    if (state === YT.PlayerState.ENDED) return "ended";
+    if (state === YT.PlayerState.CUED) return "cued";
+    return "other";
+}
+
+function getYoutubeCurrentTimeSafe() {
+    if (!youtubePlayerReady || !youtubePlayer?.getCurrentTime) {
+        return getEffectivePlayerPosition();
+    }
+
+    const value = Number(youtubePlayer.getCurrentTime());
+    return Number.isFinite(value) ? value : 0;
+}
+
+function shouldIgnoreYoutubeEvent() {
+    return Date.now() < youtubeSyncGuardUntil;
+}
+
+function applySharedStateToYoutube(state) {
+    if (!state || !youtubePlayerReady) return;
+
+    const videoId = extractYoutubeVideoId(state.conteudo_url || "");
+    const targetPosition = getEffectivePlayerPosition(state);
+
+    if (videoId) {
+        const currentVideoId = youtubePlayer?.getVideoData?.().video_id || "";
+
+        if (currentVideoId !== videoId) {
+            youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+            youtubePlayer.cueVideoById({
+                videoId,
+                startSeconds: targetPosition
+            });
+            youtubePendingVideoId = null;
+
+            setTimeout(() => {
+                applySharedStateToYoutube(state);
+            }, 500);
+
+            return;
+        }
+    }
+
+    const localPosition = getYoutubeCurrentTimeSafe();
+    const drift = Math.abs(localPosition - targetPosition);
+
+    if (drift >= YOUTUBE_HARD_SEEK_SECONDS) {
+        youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+        youtubePlayer.seekTo(targetPosition, true);
+    }
+
+    const playerState = youtubePlayer.getPlayerState?.();
+
+    if (state.status === "playing") {
+        if (playerState !== YT.PlayerState.PLAYING) {
+            youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+            youtubePlayer.playVideo();
+        }
+    } else {
+        if (
+            playerState === YT.PlayerState.PLAYING ||
+            playerState === YT.PlayerState.BUFFERING
+        ) {
+            youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+            youtubePlayer.pauseVideo();
+        }
+    }
+}
+
+async function broadcastYoutubePlayback(status) {
+    if (!youtubePlayerReady || shouldIgnoreYoutubeEvent()) return;
+
+    const now = Date.now();
+    if (now - youtubeLastBroadcastAt < YOUTUBE_BROADCAST_THROTTLE_MS) return;
+
+    youtubeLastBroadcastAt = now;
+
+    const videoId = youtubePlayer?.getVideoData?.().video_id || "";
+    const position = getYoutubeCurrentTimeSafe();
+
+    await saveAndBroadcastPlayerState({
+        servico: "YouTube",
+        conteudo_url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null,
+        posicao_segundos: position,
+        status
+    });
+}
+
+function startYoutubeStatePoll() {
+    if (youtubeStatePollInterval) {
+        clearInterval(youtubeStatePollInterval);
+    }
+
+    youtubeStatePollInterval = setInterval(() => {
+        if (!youtubePlayerReady || !currentPlayerState) return;
+
+        const videoId = extractYoutubeVideoId(currentPlayerState.conteudo_url || "");
+        if (!videoId) return;
+
+        const expected = getEffectivePlayerPosition(currentPlayerState);
+        const local = getYoutubeCurrentTimeSafe();
+        const drift = Math.abs(expected - local);
+
+        if (
+            currentPlayerState.status === "playing" &&
+            drift >= YOUTUBE_SYNC_TOLERANCE_SECONDS
+        ) {
+            if (drift >= YOUTUBE_HARD_SEEK_SECONDS) {
+                youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+                youtubePlayer.seekTo(expected, true);
+                setPlayerSyncVisual("resyncing", `corrigindo ${drift.toFixed(1)}s`);
+            }
+        }
+    }, 1000);
+}
+
+function stopYoutubeStatePoll() {
+    if (youtubeStatePollInterval) {
+        clearInterval(youtubeStatePollInterval);
+        youtubeStatePollInterval = null;
+    }
+}
+
+function createYoutubePlayer() {
+    if (youtubePlayer || !window.YT?.Player) return;
+
+    youtubePlayer = new YT.Player("youtubePlayer", {
+        width: "100%",
+        height: "100%",
+        playerVars: {
+            playsinline: 1,
+            rel: 0,
+            modestbranding: 1,
+            controls: 1
+        },
+        events: {
+            onReady: () => {
+                youtubePlayerReady = true;
+
+                if (youtubePendingVideoId) {
+                    youtubePlayer.cueVideoById(youtubePendingVideoId);
+                    youtubePendingVideoId = null;
+                }
+
+                if (currentPlayerState) {
+                    applySharedStateToYoutube(currentPlayerState);
+                }
+
+                startYoutubeStatePoll();
+            },
+            onStateChange: async (event) => {
+                if (shouldIgnoreYoutubeEvent()) return;
+
+                const stateName = getYoutubePlayerStateName(event.data);
+
+                if (stateName === "playing") {
+                    await broadcastYoutubePlayback("playing");
+                }
+
+                if (stateName === "paused") {
+                    await broadcastYoutubePlayback("paused");
+                }
+
+                if (stateName === "ended") {
+                    await saveAndBroadcastPlayerState({
+                        posicao_segundos: getYoutubeCurrentTimeSafe(),
+                        status: "paused"
+                    });
+                }
+            }
+        }
+    });
+}
+
+window.onYouTubeIframeAPIReady = function () {
+    createYoutubePlayer();
+};
+
+async function loadYoutubeFromInput() {
+    const raw = youtubeUrlInput?.value || "";
+    const videoId = extractYoutubeVideoId(raw);
+
+    if (!videoId) {
+        alert("Cole um link válido do YouTube.");
+        return;
+    }
+
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    setPlayerSyncVisual("syncing", "carregando vídeo...");
+
+    await saveAndBroadcastPlayerState({
+        servico: "YouTube",
+        titulo: "Vídeo do YouTube",
+        conteudo_url: youtubeUrl,
+        posicao_segundos: 0,
+        status: "paused"
+    });
+
+    if (youtubePlayerReady) {
+        youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+        youtubePlayer.cueVideoById(videoId);
+    } else {
+        youtubePendingVideoId = videoId;
+    }
+}
+
 function setPlayerSyncVisual(mode, text) {
     if (playerSyncBar) {
         playerSyncBar.classList.remove("is-good", "is-syncing", "is-resyncing");
@@ -540,9 +810,12 @@ function getExpectedRemotePosition(state = currentPlayerState) {
 function getLocalDisplayedPosition() {
     if (!currentPlayerState) return 0;
 
-    // While we don't have a real media element yet, the "local" clock is derived
-    // from the current synchronized state. This function becomes the adapter point
-    // for the real YouTube/mobile player in the next step.
+    const videoId = extractYoutubeVideoId(currentPlayerState.conteudo_url || "");
+
+    if (videoId && youtubePlayerReady) {
+        return getYoutubeCurrentTimeSafe();
+    }
+
     return getEffectivePlayerPosition(currentPlayerState);
 }
 
@@ -605,7 +878,20 @@ function updatePlayerUI(state) {
         }
     }
 
-    if (playButton) {
+    
+if (loadYoutubeButton) {
+    loadYoutubeButton.addEventListener("click", loadYoutubeFromInput);
+}
+
+if (youtubeUrlInput) {
+    youtubeUrlInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            loadYoutubeFromInput();
+        }
+    });
+}
+
+if (playButton) {
         playButton.textContent =
             state.status === "playing" ? "❚❚" : "▶";
         playButton.title =
@@ -628,6 +914,19 @@ function updatePlayerUI(state) {
     );
 
     updatePlayerClock();
+
+    const youtubeVideoId = extractYoutubeVideoId(state.conteudo_url || "");
+    if (youtubeVideoId) {
+        if (youtubeUrlInput && !youtubeUrlInput.matches(":focus")) {
+            youtubeUrlInput.value = state.conteudo_url || "";
+        }
+
+        if (youtubePlayerReady) {
+            applySharedStateToYoutube(state);
+        } else {
+            youtubePendingVideoId = youtubeVideoId;
+        }
+    }
 }
 
 async function loadPlayerState() {
@@ -772,7 +1071,13 @@ async function toggleSharedPlayback() {
     const nextStatus =
         currentPlayerState?.status === "playing" ? "paused" : "playing";
 
-    const effectivePosition = getEffectivePlayerPosition();
+    const hasYoutubeVideo =
+        extractYoutubeVideoId(currentPlayerState?.conteudo_url || "") &&
+        youtubePlayerReady;
+
+    const effectivePosition = hasYoutubeVideo
+        ? getYoutubeCurrentTimeSafe()
+        : getEffectivePlayerPosition();
 
     setPlayerSyncVisual("syncing", "sincronizando reprodução...");
 
@@ -783,10 +1088,22 @@ async function toggleSharedPlayback() {
 }
 
 async function seekSharedPlayback(offsetSeconds) {
-    const currentPosition = getEffectivePlayerPosition();
+    const hasYoutubeVideo =
+        extractYoutubeVideoId(currentPlayerState?.conteudo_url || "") &&
+        youtubePlayerReady;
+
+    const currentPosition = hasYoutubeVideo
+        ? getYoutubeCurrentTimeSafe()
+        : getEffectivePlayerPosition();
+
     const nextPosition = Math.max(0, currentPosition + offsetSeconds);
 
     setPlayerSyncVisual("syncing", "sincronizando posição...");
+
+    if (hasYoutubeVideo) {
+        youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+        youtubePlayer.seekTo(nextPosition, true);
+    }
 
     await saveAndBroadcastPlayerState({
         posicao_segundos: nextPosition
@@ -985,6 +1302,7 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 });
 
 window.addEventListener("beforeunload", () => {
+    stopYoutubeStatePoll();
     stopPlayerClock();
 
     if (presenceChannel) {
