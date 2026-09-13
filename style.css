@@ -218,86 +218,41 @@ img { display: block; max-width: 100%; }
     font-weight: 900;
 }
 
-/* CONTEÚDO SINCRONIZADO DA SALA */
-.watch-content-panel {
-    background:
-        radial-gradient(circle at 100% 0%, rgba(255,79,216,.08), transparent 35%),
-        rgba(19,10,31,.72);
-}
-
-.watch-content-form {
+/* PASSO 36 — WATCH PARTY ENGINE */
+.player-sync-bar {
     display: flex;
-    flex-direction: column;
-    gap: 9px;
-}
-
-.watch-content-form label {
-    margin-top: 4px;
-    color: #d7cae0;
-    font-size: 11px;
-    font-weight: 800;
-}
-
-.watch-content-form input {
-    width: 100%;
-    min-height: 50px;
-    padding: 0 14px;
-    border: 1px solid rgba(199,125,255,.18);
-    border-radius: 14px;
-    outline: none;
-    background: rgba(255,255,255,.04);
-    color: var(--text);
-}
-
-.watch-content-form input:focus {
-    border-color: rgba(199,125,255,.65);
-    box-shadow: 0 0 0 3px rgba(157,78,221,.1);
-}
-
-.watch-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 9px;
-    margin-top: 8px;
-}
-
-.watch-actions button {
-    min-height: 50px;
-    border-radius: 14px;
-    cursor: pointer;
-    font-weight: 800;
-}
-
-.watch-save-button {
-    border: 0;
-    background: linear-gradient(90deg, var(--purple-3), var(--purple), #c13fc0);
-}
-
-.watch-open-button {
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,.045);
-}
-
-.watch-actions button:disabled {
-    opacity: .45;
-    cursor: not-allowed;
-}
-
-.watch-content-status {
-    min-height: 18px;
-    margin-top: 4px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 16px 16px;
     color: var(--muted);
-    font-size: 10px;
-    line-height: 1.45;
+    font-size: 11px;
+}
+
+.player-sync-bar #playerTime {
+    min-width: 48px;
+    color: #ffffff;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.player-sync-bar .sync-dot {
+    color: #7cff9f;
+    font-size: 8px;
+    text-shadow: 0 0 10px rgba(124,255,159,.7);
+}
+
+.player-sync-bar #playerSyncText {
+    color: #a995b8;
+}
+
+.player-controls button:active {
+    transform: scale(.96);
 }
 
 .selected-service {
     border-color: rgba(199,125,255,.75) !important;
-    box-shadow: 0 0 0 2px rgba(157,78,221,.12), 0 0 22px rgba(157,78,221,.20);
-}
-
-@media (max-width: 390px) {
-    .watch-actions {
-        grid-template-columns: 1fr;
-    }
+    box-shadow:
+        0 0 0 2px rgba(157,78,221,.12),
+        0 0 22px rgba(157,78,221,.22);
 }
