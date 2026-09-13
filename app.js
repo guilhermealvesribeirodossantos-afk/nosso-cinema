@@ -359,7 +359,11 @@ async function startChatRealtime() {
     supabaseClient.realtime.setAuth(session.access_token);
 
     chatChannel = supabaseClient
-        .channel(`room:${ROOM_ID}:chat`)
+        .channel(`room:${ROOM_ID}:chat`, {
+            config: {
+                private: true
+            }
+        })
         .on(
             "postgres_changes",
             {
