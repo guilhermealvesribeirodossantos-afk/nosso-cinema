@@ -75,6 +75,10 @@ let youtubeStatePollInterval = null;
 let youtubeApiLoading = false;
 let youtubeApiLoaded = false;
 let youtubeApiLoadTimer = null;
+let youtubeHeartbeatInterval = null;
+
+const YOUTUBE_HEARTBEAT_MS = 1500;
+const YOUTUBE_REMOTE_SEEK_TOLERANCE_SECONDS = 1.0;
 
 const YOUTUBE_SYNC_TOLERANCE_SECONDS = 0.9;
 const YOUTUBE_HARD_SEEK_SECONDS = 1.8;
@@ -613,15 +617,17 @@ function applySharedStateToYoutube(state) {
 
         if (currentVideoId !== videoId) {
             youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+
             youtubePlayer.cueVideoById({
                 videoId,
                 startSeconds: targetPosition
             });
+
             youtubePendingVideoId = null;
 
             setTimeout(() => {
                 applySharedStateToYoutube(state);
-            }, 500);
+            }, 450);
 
             return;
         }
@@ -630,29 +636,37 @@ function applySharedStateToYoutube(state) {
     const localPosition = getYoutubeCurrentTimeSafe();
     const drift = Math.abs(localPosition - targetPosition);
 
-    if (drift >= YOUTUBE_HARD_SEEK_SECONDS) {
+    if (drift >= YOUTUBE_REMOTE_SEEK_TOLERANCE_SECONDS) {
         youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
         youtubePlayer.seekTo(targetPosition, true);
     }
 
-    const playerState = youtubePlayer.getPlayerState?.();
+    const forcePlaybackState = () => {
+        if (!youtubePlayerReady || !window.YT?.PlayerState) return;
 
-    if (state.status === "playing") {
-        if (playerState !== YT.PlayerState.PLAYING) {
-            youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
-            youtubePlayer.playVideo();
+        const playerState = youtubePlayer.getPlayerState?.();
+
+        if (state.status === "playing") {
+            if (playerState !== YT.PlayerState.PLAYING) {
+                youtubePlayer.playVideo();
+            }
+        } else {
+            if (
+                playerState === YT.PlayerState.PLAYING ||
+                playerState === YT.PlayerState.BUFFERING
+            ) {
+                youtubePlayer.pauseVideo();
+            }
         }
-    } else {
-        if (
-            playerState === YT.PlayerState.PLAYING ||
-            playerState === YT.PlayerState.BUFFERING
-        ) {
-            youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
-            youtubePlayer.pauseVideo();
-        }
-    }
+    };
+
+    youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+    forcePlaybackState();
+
+    // Retry because mobile/desktop iframe state transitions can arrive slightly late.
+    setTimeout(forcePlaybackState, 300);
+    setTimeout(forcePlaybackState, 800);
 }
-
 async function broadcastYoutubePlayback(status) {
     if (!youtubePlayerReady || shouldIgnoreYoutubeEvent()) return;
 
@@ -677,8 +691,8 @@ function startYoutubeStatePoll() {
         clearInterval(youtubeStatePollInterval);
     }
 
-    youtubeStatePollInterval = setInterval(() => {
-        if (!youtubePlayerReady || !currentPlayerState) return;
+    youtubeStatePollInterval = setInterval(async () => {
+        if (!youtubePlayerReady || !currentPlayerState || !currentParticipant) return;
 
         const videoId = extractYoutubeVideoId(currentPlayerState.conteudo_url || "");
         if (!videoId) return;
@@ -687,23 +701,90 @@ function startYoutubeStatePoll() {
         const local = getYoutubeCurrentTimeSafe();
         const drift = Math.abs(expected - local);
 
-        if (
-            currentPlayerState.status === "playing" &&
-            drift >= YOUTUBE_SYNC_TOLERANCE_SECONDS
-        ) {
-            if (drift >= YOUTUBE_HARD_SEEK_SECONDS) {
-                youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
-                youtubePlayer.seekTo(expected, true);
-                setPlayerSyncVisual("resyncing", `corrigindo ${drift.toFixed(1)}s`);
-            }
+        if (shouldIgnoreYoutubeEvent()) return;
+
+        const iAmController =
+            currentPlayerState.atualizado_por === currentParticipant.nome;
+
+        // If this device is controlling the session and its real player moved
+        // substantially (e.g. user dragged the YouTube timeline), publish that seek.
+        if (iAmController && drift >= 2.0) {
+            await saveAndBroadcastPlayerState({
+                posicao_segundos: local,
+                status:
+                    youtubePlayer.getPlayerState?.() === YT.PlayerState.PLAYING
+                        ? "playing"
+                        : "paused"
+            });
+            return;
+        }
+
+        // If the other device is controlling the session, this device follows it.
+        if (!iAmController && drift >= YOUTUBE_REMOTE_SEEK_TOLERANCE_SECONDS) {
+            youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+            youtubePlayer.seekTo(expected, true);
+            setPlayerSyncVisual("resyncing", `corrigindo ${drift.toFixed(1)}s`);
         }
     }, 1000);
 }
-
 function stopYoutubeStatePoll() {
     if (youtubeStatePollInterval) {
         clearInterval(youtubeStatePollInterval);
         youtubeStatePollInterval = null;
+    }
+}
+
+
+function startYoutubeHeartbeat() {
+    if (youtubeHeartbeatInterval) {
+        clearInterval(youtubeHeartbeatInterval);
+    }
+
+    youtubeHeartbeatInterval = setInterval(async () => {
+        if (
+            !youtubePlayerReady ||
+            !currentPlayerState ||
+            !currentParticipant ||
+            !playerChannel
+        ) {
+            return;
+        }
+
+        const videoId = extractYoutubeVideoId(currentPlayerState.conteudo_url || "");
+        if (!videoId) return;
+
+        const iAmController =
+            currentPlayerState.atualizado_por === currentParticipant.nome;
+
+        if (!iAmController || currentPlayerState.status !== "playing") return;
+
+        const payload = {
+            ...currentPlayerState,
+            posicao_segundos: getYoutubeCurrentTimeSafe(),
+            status: "playing",
+            atualizado_por: currentParticipant.nome,
+            atualizado_em: new Date().toISOString()
+        };
+
+        try {
+            await playerChannel.send({
+                type: "broadcast",
+                event: "player_state",
+                payload
+            });
+
+            currentPlayerState = payload;
+            updatePlayerClock();
+        } catch (error) {
+            console.warn("Heartbeat do player não enviado:", error);
+        }
+    }, YOUTUBE_HEARTBEAT_MS);
+}
+
+function stopYoutubeHeartbeat() {
+    if (youtubeHeartbeatInterval) {
+        clearInterval(youtubeHeartbeatInterval);
+        youtubeHeartbeatInterval = null;
     }
 }
 
@@ -733,6 +814,7 @@ function createYoutubePlayer() {
                 }
 
                 startYoutubeStatePoll();
+                startYoutubeHeartbeat();
             },
             onError: (event) => {
                 console.error("Erro do YouTube Player:", event.data);
@@ -1171,6 +1253,16 @@ async function toggleSharedPlayback() {
 
     setPlayerSyncVisual("syncing", "sincronizando reprodução...");
 
+    if (hasYoutubeVideo) {
+        youtubeSyncGuardUntil = Date.now() + YOUTUBE_GUARD_MS;
+
+        if (nextStatus === "playing") {
+            youtubePlayer.playVideo();
+        } else {
+            youtubePlayer.pauseVideo();
+        }
+    }
+
     await saveAndBroadcastPlayerState({
         posicao_segundos: effectivePosition,
         status: nextStatus
@@ -1392,6 +1484,7 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 });
 
 window.addEventListener("beforeunload", () => {
+    stopYoutubeHeartbeat();
     stopYoutubeStatePoll();
     stopPlayerClock();
 
