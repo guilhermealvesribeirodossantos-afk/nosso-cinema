@@ -4,7 +4,7 @@ const SUPABASE_URL = "https://alhlzltprkxigzuxfura.supabase.co";
     COLE SUA PUBLISHABLE KEY ENTRE AS ASPAS ABAIXO.
     Ela começa com: sb_publishable_
 */
-const SUPABASE_PUBLISHABLE_KEY = "COLE_SUA_PUBLISHABLE_KEY_AQUI";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_2iI7ahg95uaAhyZl7A9a9g_G4iA7S2U";
 
 const supabaseClient = window.supabase.createClient(
     SUPABASE_URL,
