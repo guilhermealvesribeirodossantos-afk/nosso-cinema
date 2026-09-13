@@ -1,0 +1,480 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    color-scheme: dark;
+
+    --bg: #07060a;
+    --card: rgba(255, 255, 255, 0.05);
+    --line: rgba(255, 255, 255, 0.09);
+    --text: #ffffff;
+    --muted: rgba(255, 255, 255, 0.68);
+
+    --purple: #8b5cf6;
+    --purple2: #6d28d9;
+
+    --netflix: #e50914;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+    background:
+        radial-gradient(
+            circle at top right,
+            rgba(139, 92, 246, 0.18),
+            transparent 32%
+        ),
+        radial-gradient(
+            circle at top left,
+            rgba(229, 9, 20, 0.13),
+            transparent 30%
+        ),
+        var(--bg);
+
+    color: var(--text);
+}
+
+button {
+    font: inherit;
+}
+
+.app-shell {
+    width: min(100%, 980px);
+    margin: 0 auto;
+
+    padding:
+        18px
+        14px
+        40px;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.eyebrow {
+    margin:
+        0
+        0
+        3px;
+
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+
+    color: #bda7ff;
+}
+
+h1,
+h2,
+h3,
+p {
+    margin-top: 0;
+}
+
+h1 {
+    margin-bottom: 0;
+
+    font-size:
+        clamp(
+            1.4rem,
+            5vw,
+            2rem
+        );
+}
+
+.badge {
+    padding:
+        8px
+        10px;
+
+    border:
+        1px
+        solid
+        var(--line);
+
+    border-radius: 999px;
+
+    font-size: 0.72rem;
+
+    color: var(--muted);
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.04
+        );
+}
+
+.hero-card,
+.controls-card,
+.browser-card,
+.notes-card {
+    border:
+        1px
+        solid
+        var(--line);
+
+    background: var(--card);
+
+    border-radius: 22px;
+
+    padding: 16px;
+
+    box-shadow:
+        0
+        16px
+        50px
+        rgba(
+            0,
+            0,
+            0,
+            0.28
+        );
+
+    margin-bottom: 14px;
+}
+
+.hero-card {
+    display: flex;
+    align-items: center;
+
+    gap: 14px;
+}
+
+.hero-card p,
+.notes-card p,
+.status-box p {
+    color: var(--muted);
+
+    line-height: 1.5;
+
+    margin-bottom: 0;
+}
+
+.netflix-mark,
+.big-n {
+    color: var(--netflix);
+
+    font-weight: 900;
+
+    line-height: 1;
+
+    text-shadow:
+        0
+        0
+        26px
+        rgba(
+            229,
+            9,
+            20,
+            0.25
+        );
+}
+
+.netflix-mark {
+    font-size: 3.8rem;
+
+    min-width: 52px;
+
+    text-align: center;
+}
+
+.controls-card {
+    display: grid;
+
+    gap: 10px;
+}
+
+.primary-btn,
+.secondary-btn,
+.ghost-btn {
+    width: 100%;
+
+    min-height: 48px;
+
+    border-radius: 15px;
+
+    border: 0;
+
+    cursor: pointer;
+
+    font-weight: 800;
+}
+
+.primary-btn {
+    color: #ffffff;
+
+    background:
+        linear-gradient(
+            135deg,
+            var(--purple),
+            var(--purple2)
+        );
+}
+
+.secondary-btn {
+    color: #ffffff;
+
+    background: var(--netflix);
+}
+
+.ghost-btn {
+    color: #ffffff;
+
+    border:
+        1px
+        solid
+        var(--line);
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.04
+        );
+}
+
+.status-box {
+    display: flex;
+
+    gap: 10px;
+
+    align-items: flex-start;
+
+    padding: 13px;
+
+    border-radius: 16px;
+
+    background:
+        rgba(
+            0,
+            0,
+            0,
+            0.22
+        );
+}
+
+.status-box strong {
+    display: block;
+
+    margin-bottom: 3px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+
+    border-radius: 999px;
+
+    margin-top: 5px;
+
+    flex: 0 0 auto;
+}
+
+.status-dot.idle {
+    background: #777777;
+}
+
+.status-dot.loading {
+    background: #f4c542;
+
+    box-shadow:
+        0
+        0
+        14px
+        rgba(
+            244,
+            197,
+            66,
+            0.55
+        );
+}
+
+.status-dot.sent {
+    background: #7cfc9f;
+
+    box-shadow:
+        0
+        0
+        14px
+        rgba(
+            124,
+            252,
+            159,
+            0.5
+        );
+}
+
+.status-dot.error {
+    background: #ff6b6b;
+
+    box-shadow:
+        0
+        0
+        14px
+        rgba(
+            255,
+            107,
+            107,
+            0.5
+        );
+}
+
+.browser-card {
+    padding: 0;
+
+    overflow: hidden;
+}
+
+.browser-bar {
+    display: flex;
+
+    align-items: center;
+
+    gap: 7px;
+
+    padding:
+        10px
+        12px;
+
+    border-bottom:
+        1px
+        solid
+        var(--line);
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.035
+        );
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+
+    border-radius: 999px;
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.22
+        );
+}
+
+.address {
+    margin-left: 6px;
+
+    flex: 1;
+
+    padding:
+        7px
+        10px;
+
+    border-radius: 10px;
+
+    background:
+        rgba(
+            0,
+            0,
+            0,
+            0.25
+        );
+
+    color: var(--muted);
+
+    font-size: 0.78rem;
+}
+
+.frame-wrap {
+    position: relative;
+
+    min-height: 520px;
+
+    background: #000000;
+}
+
+#netflixFrame {
+    width: 100%;
+
+    height: 72vh;
+
+    min-height: 520px;
+
+    border: 0;
+
+    background: #000000;
+}
+
+.frame-placeholder {
+    min-height: 520px;
+
+    display: grid;
+
+    place-items: center;
+
+    align-content: center;
+
+    padding: 24px;
+
+    text-align: center;
+
+    background:
+        radial-gradient(
+            circle at center,
+            rgba(229, 9, 20, 0.10),
+            transparent 35%
+        ),
+        #020202;
+}
+
+.big-n {
+    font-size: 7rem;
+
+    margin-bottom: 18px;
+}
+
+.frame-placeholder p {
+    max-width: 480px;
+
+    color: var(--muted);
+}
+
+@media (min-width: 720px) {
+    .controls-card {
+        grid-template-columns:
+            repeat(
+                3,
+                1fr
+            );
+    }
+
+    .status-box {
+        grid-column:
+            1 / -1;
+    }
+}
