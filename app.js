@@ -55,9 +55,18 @@ const rewindButton = document.getElementById("rewindButton");
 const forwardButton = document.getElementById("forwardButton");
 const playerTime = document.getElementById("playerTime");
 const playerSyncText = document.getElementById("playerSyncText");
+const playerSyncBar = document.querySelector(".player-sync-bar");
 const playerControlButtons = document.querySelectorAll(".player-controls button");
 
 let playerClockInterval = null;
+let lastRealtimePlayerStateAt = 0;
+let driftCorrectionCooldownUntil = 0;
+
+const PLAYER_DRIFT_IGNORE_SECONDS = 0.6;
+const PLAYER_DRIFT_SOFT_SECONDS = 1.2;
+const PLAYER_DRIFT_HARD_SECONDS = 2.5;
+const PLAYER_DRIFT_CHECK_INTERVAL_MS = 1000;
+const PLAYER_DRIFT_COOLDOWN_MS = 1800;
 
 function hideAllScreens() {
     loginScreen.classList.add("hidden");
@@ -498,7 +507,8 @@ function startPlayerClock() {
 
     playerClockInterval = setInterval(() => {
         updatePlayerClock();
-    }, 500);
+        correctPlayerDrift();
+    }, PLAYER_DRIFT_CHECK_INTERVAL_MS);
 }
 
 function stopPlayerClock() {
@@ -507,10 +517,74 @@ function stopPlayerClock() {
     playerClockInterval = null;
 }
 
+
+function setPlayerSyncVisual(mode, text) {
+    if (playerSyncBar) {
+        playerSyncBar.classList.remove("is-good", "is-syncing", "is-resyncing");
+
+        if (mode === "good") playerSyncBar.classList.add("is-good");
+        if (mode === "syncing") playerSyncBar.classList.add("is-syncing");
+        if (mode === "resyncing") playerSyncBar.classList.add("is-resyncing");
+    }
+
+    if (playerSyncText && text) {
+        playerSyncText.textContent = text;
+    }
+}
+
+function getExpectedRemotePosition(state = currentPlayerState) {
+    if (!state) return 0;
+    return getEffectivePlayerPosition(state);
+}
+
+function getLocalDisplayedPosition() {
+    if (!currentPlayerState) return 0;
+
+    // While we don't have a real media element yet, the "local" clock is derived
+    // from the current synchronized state. This function becomes the adapter point
+    // for the real YouTube/mobile player in the next step.
+    return getEffectivePlayerPosition(currentPlayerState);
+}
+
+function correctPlayerDrift() {
+    if (!currentPlayerState) return;
+
+    const expected = getExpectedRemotePosition(currentPlayerState);
+    const local = getLocalDisplayedPosition();
+    const drift = Math.abs(expected - local);
+
+    if (Date.now() < driftCorrectionCooldownUntil) {
+        return;
+    }
+
+    if (drift <= PLAYER_DRIFT_IGNORE_SECONDS) {
+        setPlayerSyncVisual("good", "sincronizado");
+        return;
+    }
+
+    if (drift < PLAYER_DRIFT_HARD_SECONDS) {
+        setPlayerSyncVisual("syncing", `ajustando ${drift.toFixed(1)}s`);
+        driftCorrectionCooldownUntil = Date.now() + PLAYER_DRIFT_COOLDOWN_MS;
+        updatePlayerClock();
+        return;
+    }
+
+    setPlayerSyncVisual("resyncing", `ressincronizando ${drift.toFixed(1)}s`);
+    driftCorrectionCooldownUntil = Date.now() + PLAYER_DRIFT_COOLDOWN_MS;
+    updatePlayerClock();
+
+    setTimeout(() => {
+        if (currentPlayerState) {
+            setPlayerSyncVisual("good", "sincronizado");
+        }
+    }, 500);
+}
+
 function updatePlayerUI(state) {
     if (!state) return;
 
     currentPlayerState = state;
+    lastRealtimePlayerStateAt = Date.now();
 
     if (playerTitle) {
         playerTitle.textContent = state.servico
@@ -547,11 +621,11 @@ function updatePlayerUI(state) {
             );
         });
 
-    if (playerSyncText) {
-        const action = state.status === "playing" ? "reproduzindo" : "pausado";
-        playerSyncText.textContent =
-            `${action} • sincronizado por ${state.atualizado_por || "Gui + Malu"}`;
-    }
+    const action = state.status === "playing" ? "reproduzindo" : "pausado";
+    setPlayerSyncVisual(
+        "good",
+        `${action} • sincronizado por ${state.atualizado_por || "Gui + Malu"}`
+    );
 
     updatePlayerClock();
 }
@@ -615,7 +689,13 @@ async function startPlayerRealtime() {
             "broadcast",
             { event: "player_state" },
             ({ payload }) => {
+                if (!payload) return;
+
+                // The sender timestamp lets this device compensate for network transit.
+                // getEffectivePlayerPosition() will add the elapsed time since atualizado_em.
                 updatePlayerUI(payload);
+                updatePlayerClock();
+                correctPlayerDrift();
             }
         )
         .subscribe((status, error) => {
@@ -623,10 +703,16 @@ async function startPlayerRealtime() {
 
             if (status === "SUBSCRIBED") {
                 playerStarted = true;
+                setPlayerSyncVisual("good", "tempo real ativo");
             }
 
             if (status === "CHANNEL_ERROR") {
+                setPlayerSyncVisual("resyncing", "erro de sincronização");
                 console.error("Erro no canal privado do player:", error);
+            }
+
+            if (status === "TIMED_OUT") {
+                setPlayerSyncVisual("resyncing", "reconectando...");
             }
         });
 }
@@ -688,6 +774,8 @@ async function toggleSharedPlayback() {
 
     const effectivePosition = getEffectivePlayerPosition();
 
+    setPlayerSyncVisual("syncing", "sincronizando reprodução...");
+
     await saveAndBroadcastPlayerState({
         posicao_segundos: effectivePosition,
         status: nextStatus
@@ -697,6 +785,8 @@ async function toggleSharedPlayback() {
 async function seekSharedPlayback(offsetSeconds) {
     const currentPosition = getEffectivePlayerPosition();
     const nextPosition = Math.max(0, currentPosition + offsetSeconds);
+
+    setPlayerSyncVisual("syncing", "sincronizando posição...");
 
     await saveAndBroadcastPlayerState({
         posicao_segundos: nextPosition
